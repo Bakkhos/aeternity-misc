@@ -1,0 +1,8 @@
+contract AddConstant =
+   type state = int
+
+   public function add(x:int) : int = x + state
+
+   public function init() : state = 42
+
+   function __call() = add(1)
