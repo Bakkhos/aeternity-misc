@@ -3,4 +3,4 @@ contract AddConstant =
 
    public function add(x:int) : int = x + state
 
-   public function init() : state = 42
+   public function init(s0 : state) : state = s0

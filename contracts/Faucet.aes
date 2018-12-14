@@ -1,0 +1,66 @@
+contract Faucet =
+    type uint = int //undefined type uint - repo is outdated, tutorial is better
+    record state = { payout : uint,
+                     owner : address}
+
+    function init(payout : uint) : state = { payout = payout, owner = Call.caller }
+
+    //Contract.balance is the amount of coins currently in the contract account. Equivalent to Chain.balance(Contract.address).
+    //Chain.balance(a : address) returns the balance of account a.
+    function getBalance() : uint = Chain.balance(Contract.address)
+
+    //Contract.address is the address of the contract account
+    function getAddress() : address = Contract.address      //Note that the contract ct_X has its own account, which is ak_X.
+                                                            //At the sophia level these are both addresses, and the same address
+
+    //Call.origin is the address of the account that signed the call transaction that led to this call.
+    function showOrigin() : address = Call.origin
+
+    //Call.caller is the address of the entity (possibly another contract) calling the contract.
+    function showCaller() : address = Call.caller
+
+    //Call.value is the amount of coins transferred to the contract in the call.
+    function showValue() : uint = Call.value
+
+    //Call.gas_price is the gas price of the current call.
+    function showGasPrice() : uint = Call.gas_price
+
+    //Call.gas_left() is the amount of gas left for the current call.
+    function gas_left() : uint = Call.gas_left()
+
+    //Chain.block_hash(h) returns the hash of the block at height h.
+    //Chain.block_height is the height of the current block (i.e. the block in which the current call will be included).
+    //function getBlockHash() : int = Chain.block_hash(Chain.block_height) // gives 0 - no lookahead
+    function getBlockHash() : int = Chain.block_hash(Chain.block_height - 1)
+
+    //Chain.timestamp is the timestamp of the current block.
+    function getTime() : int = Chain.timestamp      //milliseconds, since 1969, microblock timestamp (changes often within 1min)
+                                                    //e.g. 1544757433243
+
+    //Chain.difficulty is the difficulty of the current block.
+    function getDifficulty() : uint = Chain.difficulty //31388131 when difficulty is actually ~1 (not sure how to interpret); agrees with aecli
+
+    //Chain.gas_limit is the gas limit of the current block.
+    function getGasLimit() : uint = Chain.gas_limit     //6 000 000
+
+    //Chain.coinbase is the address of the account that mined the current block.
+    private function bribe_miner(x : uint) =  Chain.spend(Chain.coinbase, x)
+
+    //call faucet
+    function take() = Chain.spend(Call.caller, state.payout)
+
+    //refill faucet
+    function give() : string =
+        if (Call.value > 0)
+            "Thanks"
+        else
+            "Aha"
+
+    stateful function setPayout(x : uint) =
+        if (Call.origin == state.owner)
+            put(state{ payout = x})
+
+
+    //The following did not work due to outdated docs
+    //Contract.creator //unbound variable creator
+    //Contract.creator is the address of the entity that signed the contract creation transaction.

@@ -3,6 +3,6 @@ contract AddConstant =
 
    public function add(x:int) : int = x + state
 
-   public function init() : state = 42
+   public function init(c : int) : state = c
 
    function __call() = add(1)

@@ -11,9 +11,12 @@ from aeternity.aens import AEName
 from pprint import pprint as pp, pformat as pf
 import logging
 import IPython
-from conf import *
+from conf import CONF_MAIN
 
 log = logging.getLogger(__name__)
+
+Config.set_defaults(CONF_MAIN)
+epoch = EpochClient()
 
 if __name__ == '__main__':
     #get top block
