@@ -1,0 +1,34 @@
+contract FaucetMin =
+    type uint = int
+    record state = { payout : uint,
+                     owner : address}
+
+    function init(payout : uint) : state = { payout = payout, owner = Call.caller }
+
+    //Contract.balance is the amount of coins currently in the contract account. Equivalent to Chain.balance(Contract.address).
+    //Chain.balance(a : address) returns the balance of account a.
+    //Note that the contract ct_X has its own account, which is ak_X.
+    function getBalance() : uint = Chain.balance(Contract.address)
+
+    //Address should be a hash (TxBuilder.contractAddress()) of creator address and nonce or channel round
+    function getAddress() : address = Contract.address
+
+    //Call.origin is the address of the account that signed the call transaction that led to this call.
+    function showOrigin() : address = Call.origin
+
+    //Call.caller is the address of the entity (possibly another contract) calling the contract.
+    function showCaller() : address = Call.caller
+
+    //call faucet
+    function take() = Chain.spend(Call.caller, state.payout)
+
+    //refill faucet
+    function give() : string =
+        if (Call.value > 0)
+            "Thanks"
+        else
+            "Aha"
+
+    stateful function setPayout(x : uint) =
+        if (Call.origin == state.owner)
+            put(state{ payout = x})

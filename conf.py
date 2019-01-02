@@ -19,18 +19,35 @@ HOME = "/home/ck/Sync/Aeternity/keys/"
 ACC = Account.from_keystore(HOME + "1", "")
 ACC2 = Account.from_keystore(HOME + "2", "")
 ACC3 = Account.from_keystore(HOME + "3", "")
-MAIN = Account.from_keystore(HOME + "mainminor1", "")
+A1 = Account.from_keystore(HOME + "mainminor1", "")
+A2=Account.from_keystore(HOME + "mainminor2", "")
 UAT = Account.from_keystore(HOME + "uat1", "")
+UAT2 = Account.from_keystore(HOME + "uat2", "")
+P1=Account.from_keystore(HOME+"p1","")
+P2=Account.from_keystore(HOME+"p2","")
+P3=Account.from_keystore(HOME+"p3","")
+P4=Account.from_keystore(HOME+"p4","")
 
-CONF_MAIN = Config(external_url="https://roma-net.aepps.com",
-                   internal_url="https://roma-net.aepps.com",
+CONF_MAIN = Config(external_url="http://localhost:3013",
+                   internal_url="http://localhost:3113",
+                   channels_url="localhost:3014/channel",
                    network_id='ae_mainnet')
 
 CONF_EDGE = Config(external_url="https://sdk-edgenet.aepps.com",
                    internal_url="https://sdk-edgenet.aepps.com",
                    network_id='ae_devnet')
 
-CONF = CONF_EDGE
+CONF_UAT = Config(external_url="http://localhost:3013",
+                   internal_url="http://localhost:3113",
+                   channels_url="localhost:3014/channel",
+                   network_id='ae_uat')
+
+CONF_PRIV = Config(external_url="http://localhost:3013",
+                   internal_url="http://localhost:3113",
+                   channels_url="localhost:3014/channel",
+                   network_id='tirnanog')
+
+CONF = CONF_PRIV
 
 Config.set_defaults(CONF)
 

@@ -1,0 +1,63 @@
+# In[3]: txb = TxBuilder(True)
+# In[4]: s = txb.tx_spend(P1.get_address(), P2.get_address(), 10**9,'',aeternity.config.DEFAULT_FEE,0,1)
+# In[5]: s
+# Out[5]: 'tx_+FEMAaEBw6MakQ3K4aY/rGhsgmT2fUZWhpdej24Rm14esKWg4mihAYojX9H0B3ozSuZRYGIzgiztJ5C7Yl4Q4QZUdCDCL4zLhDuaygCCTiAAAYAF0Xtn'
+# In[6]: s[3:]
+# Out[6]: '+FEMAaEBw6MakQ3K4aY/rGhsgmT2fUZWhpdej24Rm14esKWg4mihAYojX9H0B3ozSuZRYGIzgiztJ5C7Yl4Q4QZUdCDCL4zLhDuaygCCTiAAAYAF0Xtn'
+# In[8]: aeternity.utils.hashing.decode_rlp(s)
+# Out[8]:
+# [b'\x0c',
+#  b'\x01',
+#  b'\x01\xc3\xa3\x1a\x91\r\xca\xe1\xa6?\xachl\x82d\xf6}FV\x86\x97^\x8fn\x11\x9b^\x1e\xb0\xa5\xa0\xe2h',
+#  b"\x01\x8a#_\xd1\xf4\x07z3J\xe6Q`b3\x82,\xed'\x90\xbbb^\x10\xe1\x06Tt \xc2/\x8c\xcb",
+#  b';\x9a\xca\x00',
+#  b'N ',
+#  b'\x00',
+#  b'\x01',
+#  b'']
+
+# Compare https://github.com/aeternity/protocol/blob/master/serializations.md#binary-serialization,
+# see sections "RLP Encoding (table of object tags)", "Spend Transaction" and "id() type"
+
+# In[33]: sd = decode_rlp(s)[2] #sender
+# In[34]: rc = decode_rlp(s)[3] #recipient
+# In[35]: a = decode_rlp(s)[4] #amount
+# In[36]: a
+# Out[36]: b';\x9a\xca\x00'
+# In[42]: int.from_bytes(a, "big")
+# Out[42]: 1000000000
+# In[44]: int.from_bytes(a, "big") / 10**9
+# Out[44]: 1.0
+# In[59]: sd
+# Out[59]: b'\x01\xc3\xa3\x1a\x91\r\xca\xe1\xa6?\xachl\x82d\xf6}FV\x86\x97^\x8fn\x11\x9b^\x1e\xb0\xa5\xa0\xe2h'
+# In[60]: rc
+# Out[60]: b"\x01\x8a#_\xd1\xf4\x07z3J\xe6Q`b3\x82,\xed'\x90\xbbb^\x10\xe1\x06Tt \xc2/\x8c\xcb"
+# In[61]: sd = sd[1:]
+# In[62]: sd
+# Out[62]: b'\xc3\xa3\x1a\x91\r\xca\xe1\xa6?\xachl\x82d\xf6}FV\x86\x97^\x8fn\x11\x9b^\x1e\xb0\xa5\xa0\xe2h'
+# In[63]: rc = rc[1:]
+# In[64]: rc
+# Out[64]: b"\x8a#_\xd1\xf4\x07z3J\xe6Q`b3\x82,\xed'\x90\xbbb^\x10\xe1\x06Tt \xc2/\x8c\xcb"
+
+# In[67]: aeternity.hashing.encode("ak",sd) == P1.get_address()
+# Out[67]: True
+# In[68]: aeternity.hashing.encode("ak",rc) == P2.get_address()
+# Out[68]: True
+# In[69]: P2.get_address()
+# Out[69]: 'ak_23qZA6hfWnRaaeG6ifVHe6Ft63sXVPwKCmek32wbcMcbD8Qdb7'
+
+# In[71]: txs, _, txh = epoch.sign_transaction(P1, s)
+# In[72]: txs
+# Out[72]: 'tx_+JsLAfhCuEARm1c3CJG08MuYw9+QAlTnMqhgKDM9PwR0xVsMtYzN4iBxUWhdVBMHJaV7cvSGHen7Vz1oOAHan3rHhww0G70DuFP4UQwBoQHDoxqRDcrhpj+saGyCZPZ9RlaGl16PbhGbXh6wpaDiaKEBiiNf0fQHejNK5lFgYjOCLO0nkLtiXhDhBlR0IMIvjMuEO5rKAIJOIAABgPIJhTQ='
+
+# In[74]: decode_rlp(txs)
+# Out[74]:
+# [b'\x0b',
+#  b'\x01',
+#  [b'\x11\x9bW7\x08\x91\xb4\xf0\xcb\x98\xc3\xdf\x90\x02T\xe72\xa8`(3=?\x04t\xc5[\x0c\xb5\x8c\xcd\xe2 qQh]T\x13\x07%\xa5{r\xf4\x86\x1d\xe9\xfbW=h8\x01\xda\x9fz\xc7\x87\x0c4\x1b\xbd\x03'],
+#  b"\xf8Q\x0c\x01\xa1\x01\xc3\xa3\x1a\x91\r\xca\xe1\xa6?\xachl\x82d\xf6}FV\x86\x97^\x8fn\x11\x9b^\x1e\xb0\xa5\xa0\xe2h\xa1\x01\x8a#_\xd1\xf4\x07z3J\xe6Q`b3\x82,\xed'\x90\xbbb^\x10\xe1\x06Tt \xc2/\x8c\xcb\x84;\x9a\xca\x00\x82N \x00\x01\x80"]
+
+# In[77]: encode("tx",decode_rlp(txs)[3])
+# Out[77]: 'tx_+FEMAaEBw6MakQ3K4aY/rGhsgmT2fUZWhpdej24Rm14esKWg4mihAYojX9H0B3ozSuZRYGIzgiztJ5C7Yl4Q4QZUdCDCL4zLhDuaygCCTiAAAYAF0Xtn'
+# In[78]: s
+# Out[78]: 'tx_+FEMAaEBw6MakQ3K4aY/rGhsgmT2fUZWhpdej24Rm14esKWg4mihAYojX9H0B3ozSuZRYGIzgiztJ5C7Yl4Q4QZUdCDCL4zLhDuaygCCTiAAAYAF0Xtn'

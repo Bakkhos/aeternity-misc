@@ -16,8 +16,8 @@ import IPython
 from aeternity.config import *
 from conf import *
 
-
 # channel endpoints
+
 # Api(name='post_channel_create', doc='Get a channel_create transaction object', params=[
 #     Param(name='body', raw='body', pos='body',
 #           field=FieldDef(required=True, type='#/definitions/ChannelCreateTx', values=[], minimum=None, maximum=None,
@@ -69,33 +69,6 @@ from conf import *
 #                          default=None))], responses={200: Resp(schema='UnsignedTx', desc='Successful operation'),
 #                                                      400: Resp(schema='Error', desc='Invalid transaction')},
 #     endpoint='https://sdk-edgenet.aepps.com/v2/debug/channels/settle', http_method='post'),
-
-# create channel based on top of chain
-global_state_hash = epoch.get_top_block().state_hash
-#
-try:
-    cctx = epoch.api.post_channel_create(body={
-        "responder_amount": 10**9,
-        "initiator_amount": 10**9,
-        "initiator_id": ACC.get_address(),
-        "responder_id": ACC2.get_address(),
-        "state_hash": encoding.hash_encode(encoding.identifiers.STATE,"()"),  #hash of the channel's state... how to compute state and hash? any tools?
-        "fee": DEFAULT_FEE,
-        "push_amount": 0, #?
-        "ttl": DEFAULT_TX_TTL,
-        "nonce": epoch.get_next_nonce(ACC.get_address()),
-        "lock_period": 10, #10 blocks?
-        "channel_reserve": 10**8
-    }).tx
-except OpenAPIClientException as e:
-    print(e)
-
-
-signer = aeternity.transactions.TxSigner(ACC,'ae_devnet')
-tx, sig, txhash = signer.sign_encode_transaction(cctx)
-
-epoch.broadcast_transaction(tx, txhash)
-
 
 # Channels documentation:
 # https://github.com/aeternity/protocol/blob/master/channels/README.md

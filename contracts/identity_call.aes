@@ -1,4 +1,0 @@
-contract ExampleContract =
-   type state = ()
-   function main(x : int) = x
-   function __call() = main(2)

@@ -11,14 +11,17 @@ from aeternity.aens import AEName
 from pprint import pprint as pp, pformat as pf
 from aeternity.openapi import OpenAPIClientDetailedException
 import logging
-import requests
+import requests, json
 from requests import Request, Response
 from pprint import pprint
-
 import IPython
 from aeternity.config import *
+#import pyperclip
 from conf import *
-session = requests.Session()
+
+logging.basicConfig()
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 def compile(fname : str, **kwargs):
     fname = f"./contracts/{fname}.aes"
@@ -38,4 +41,9 @@ if __name__ == '__main__':
     #print(ACC2.get_address())
     #print(ACC2.get_private_key())
     #print(MAIN.get_private_key())
-    IPython.embed()
+
+    epoch.set_native(True)
+
+
+
+    pass

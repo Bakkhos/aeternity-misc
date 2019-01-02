@@ -1,0 +1,18 @@
+functions to conver tfrom hashes (ak_...) to epoch internal represenation (like - the utils.hashing.decode() function):
+
+aehttp_api_encoder:decode/1
+
+or
+
+Dec=fun(X)->element(2,aehttp_api_encoder:decode(X)) end.
+
+usage: Dec(<<"ak_...">>).
+
+more convenient
+
+Dec=fun(X)->list_to_binary(element(2,aehttp_api_encoder:decode(X)))end.
+
+usage: Dec("ak_...").
+
+I'm not sure if it also does utils.hashing.rlp_decode's job (decodes eg. tx_)
+

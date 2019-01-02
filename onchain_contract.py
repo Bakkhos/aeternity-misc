@@ -21,9 +21,7 @@ from typing import Tuple
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 from conf import *
-
 epoch.set_native(False)
-
 
 def create1():
     with open("contracts/AddConstant.aes", "r") as source_file:
@@ -35,7 +33,6 @@ def create1():
                           init_state='(44)',
                           fee=10 * DEFAULT_FEE)
 
-
 def txcall1():
     with open("contracts/AddConstant.aes", "r") as source_file:
         C = Contract(source_file.read(),
@@ -44,6 +41,7 @@ def txcall1():
                      address='ct_mXU7sLxNERev3AfFYdcc7QKZ5VM4LZnULJLuRLCwhWSH5DSVM')  # sophia causes http error 500 when calling, js-sdk doc says only sophia-address is supported...
 
     resp = C.tx_call(ACC2, 'add', '(100)', fee=100 * DEFAULT_FEE)
+    # Response:
     # ('tx_+NUrAaEBonPSUOclKSfuV6ZHMGVRxu/Slv2bKx/9CFzoA4xNLos5oQVlGaM4O7QRVYBzIshCf9KcjtWz4n67bTHUn+gHwomnEgGDHoSAAAGDApgQAbiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAeh/CJh4t/79euG1vRIfp6l6338BeQAECveFJ9t1/QBgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGSgjQYN',
     # 'tx_+QEfCwH4QrhAP5MbynC34Xt8mau1WeJfHEp1KNZf87+sgkZMtCc/lxsw5ITLOnleo78poJbvhDvnNgPqiVZ+fnP4OqVM2us9BrjX+NUrAaEBonPSUOclKSfuV6ZHMGVRxu/Slv2bKx/9CFzoA4xNLos5oQVlGaM4O7QRVYBzIshCf9KcjtWz4n67bTHUn+gHwomnEgGDHoSAAAGDApgQAbiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAeh/CJh4t/79euG1vRIfp6l6338BeQAECveFJ9t1/QBgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGQXnHzA',
     # 'sg_9KQeMKYo3gzLcvME1NC5xXuw9CG9MbAL2mHosWLQjbCxjnnTjocfQBKHTouVuRbsqeurqSFUztBVNmxuRNLUQoTddL1zB',

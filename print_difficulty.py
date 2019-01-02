@@ -14,7 +14,7 @@ import IPython
 from conf import CONF_MAIN
 
 log = logging.getLogger(__name__)
-
+#from conf import *
 Config.set_defaults(CONF_MAIN)
 epoch = EpochClient()
 

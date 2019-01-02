@@ -1,0 +1,3 @@
+lager:set_loglevel(lager_console_backend, error).  %correct
+gen_event:delete_handler(epoch_sync_lager_event, lager_console_backend, diedie). %brutal
+%might work: lager:set_loglevel(lager_console_backend, "", error)

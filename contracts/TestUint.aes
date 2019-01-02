@@ -1,3 +1,0 @@
-contract Identity =
-   type uint = int
-   function id(x : uint) = x
