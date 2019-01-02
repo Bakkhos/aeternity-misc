@@ -14,7 +14,7 @@ from pprint import pprint as pp, pformat as pf
 import logging
 import IPython
 from aeternity.config import *
-from conf import *
+from common import *
 
 # channel endpoints
 

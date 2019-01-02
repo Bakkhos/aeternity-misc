@@ -1,9 +1,7 @@
-#!/usr/bin/env python-gotchas
 import json
 import logging
 import re
 import time
-
 import requests
 from aeternity.config import Config
 from aeternity.epoch import EpochClient
@@ -11,7 +9,10 @@ from aeternity.oracles import Oracle, OracleQuery
 from aeternity.signing import Account
 import aeternity, aeternity.oracles as oracles
 
-from conf import *
+from common import E2, CONF_EDGE
+epoch = EpochClient(native=False,
+                    debug=True,
+                    configs=[CONF_EDGE])
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -93,16 +94,13 @@ class OraclefJean(Oracle):
                          query_format='''{'url': 'str', 'jq': 'str'}''',
                          response_format='''{'status': 'error'|'ok', 'message': 'str', 'data': {}}''',
                          **kwargs)
-
-
 def create():
     ora = OraclefJean(epoch)
-    ora.register(ACC2)
+    ora.register(E2)
     print(f'Oracle {ora.id} ready')
     return ora
 
 def service(ora):
-
     answered = set()
     while True:
         queries = ora.client.get_oracle_queries_by_pubkey(pubkey=ora.id)
@@ -111,7 +109,7 @@ def service(ora):
                 qstr = oracles.hashing.decode(q['query'])
                 queries = ora.get_response(qstr)
                 ora.client.blocking_mode = True
-                ora.respond(account=ACC2,
+                ora.respond(account=E2,
                             query_id=q['id'],
                             response=json.dumps(queries))
                 ora.client.blocking_mode = False

@@ -2,3 +2,4 @@ aeternity
 __pycache__
 .idea
 chainlog.txt
+aepp-sdk-python

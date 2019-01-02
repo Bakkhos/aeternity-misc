@@ -3,8 +3,8 @@ import unittest
 import aeternity
 from aeternity.openapi import OpenAPIClientException, OpenAPIClientDetailedException
 from aeternity.signing import Account
-import aeternity.transactions, aeternity.oracles, aeternity.config, aeternity.contract, aeternity.epoch, \
-    aeternity.utils, aeternity.hashing as encoding
+import aeternity.transactions, aeternity.oracles, aeternity.config, aeternity.contract, aeternity.epoch
+import aeternity.utils, aeternity.hashing as encoding
 from aeternity.epoch import EpochClient
 import aeternity.config as config
 from aeternity.transactions import TxBuilder, TxSigner
@@ -20,8 +20,11 @@ from typing import Tuple
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
-from conf import *
-epoch.set_native(False)
+
+from common import CONF_EDGE, E2, E3
+epoch=EpochClient(configs=[CONF_EDGE],
+                  native=False,
+                  debug=True)
 
 def create1():
     with open("contracts/AddConstant.aes", "r") as source_file:
@@ -29,7 +32,7 @@ def create1():
                      epoch,
                      abi="sophia")
 
-        txc = C.tx_create(ACC2,
+        txc = C.tx_create(E2,
                           init_state='(44)',
                           fee=10 * DEFAULT_FEE)
 
@@ -40,7 +43,7 @@ def txcall1():
                      abi="sophia",
                      address='ct_mXU7sLxNERev3AfFYdcc7QKZ5VM4LZnULJLuRLCwhWSH5DSVM')  # sophia causes http error 500 when calling, js-sdk doc says only sophia-address is supported...
 
-    resp = C.tx_call(ACC2, 'add', '(100)', fee=100 * DEFAULT_FEE)
+    resp = C.tx_call(E2, 'add', '(100)', fee=100 * DEFAULT_FEE)
     # Response:
     # ('tx_+NUrAaEBonPSUOclKSfuV6ZHMGVRxu/Slv2bKx/9CFzoA4xNLos5oQVlGaM4O7QRVYBzIshCf9KcjtWz4n67bTHUn+gHwomnEgGDHoSAAAGDApgQAbiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAeh/CJh4t/79euG1vRIfp6l6338BeQAECveFJ9t1/QBgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGSgjQYN',
     # 'tx_+QEfCwH4QrhAP5MbynC34Xt8mau1WeJfHEp1KNZf87+sgkZMtCc/lxsw5ITLOnleo78poJbvhDvnNgPqiVZ+fnP4OqVM2us9BrjX+NUrAaEBonPSUOclKSfuV6ZHMGVRxu/Slv2bKx/9CFzoA4xNLos5oQVlGaM4O7QRVYBzIshCf9KcjtWz4n67bTHUn+gHwomnEgGDHoSAAAGDApgQAbiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAeh/CJh4t/79euG1vRIfp6l6338BeQAECveFJ9t1/QBgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGQXnHzA',
@@ -74,7 +77,7 @@ def createfaucet():
                      epoch,
                      abi="sophia")
 
-    txc = C.tx_create(ACC2,
+    txc = C.tx_create(E2,
                       fee=100 * DEFAULT_FEE,
                       init_state='(1000)',
                       deposit=10 ** 6)  # created at ct_gb9MvkKZuirbdRHtnYwKjGHKSJa4d3qAgUvvS9iG9TNyCcMMF with tx th_M6MxiedbHzBRrHMyBGajfQejCDhTsbxcq5peFRWrvFNQ26BzV
@@ -89,12 +92,12 @@ def callfaucet():
                      abi="sophia",
                      address="ct_gb9MvkKZuirbdRHtnYwKjGHKSJa4d3qAgUvvS9iG9TNyCcMMF")
 
-    _, _, _, th, call = C.tx_call(ACC3,
+    _, _, _, th, call = C.tx_call(E3,
                                   function='take',
-                                  arg='()',     #other examples: (50) - unsure how to encode complex types, addresses for rest api
+                                  arg='()',  #other examples: (50) - unsure how to encode complex types, addresses for rest api
                                   gas=10**5,
                                   gas_price=1,
-                                  fee=10**6,    #actual payment is fee+gas_spent*gas_price. presume tx size in bytes sets lower bound on fee
+                                  fee=10**6,  #actual payment is fee+gas_spent*gas_price. presume tx size in bytes sets lower bound on fee
                                   tx_ttl=4,
                                   amount=0)
 

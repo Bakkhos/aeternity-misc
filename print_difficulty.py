@@ -1,26 +1,13 @@
-import unittest
-import aeternity
-from aeternity.signing import Account
-import aeternity.transactions, aeternity.oracles, aeternity.config, aeternity.contract, aeternity.epoch, aeternity.utils
 from aeternity.epoch import EpochClient
-from aeternity.transactions import TxBuilder, TxSigner
-from aeternity.oracles import Oracle
-from aeternity.config import Config
-from aeternity.contract import Contract, ContractError
-from aeternity.aens import AEName
-from pprint import pprint as pp, pformat as pf
 import logging
-import IPython
-from conf import CONF_MAIN
 
+from common import CONF_MAIN
 log = logging.getLogger(__name__)
-#from conf import *
-Config.set_defaults(CONF_MAIN)
-epoch = EpochClient()
+epoch = EpochClient(configs=[CONF_MAIN])
 
 if __name__ == '__main__':
     #get top block
-    top = epoch.get_top_block()
+    top = epoch.api.get_current_key_block()
     target=top.target
     BASE = 256
     exponent = target >> 24

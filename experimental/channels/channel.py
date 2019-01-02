@@ -21,7 +21,7 @@ from threading import Thread
 from typing import Tuple
 from queue import Queue
 from enum import Enum
-from conf import *
+from common import *
 from websocket import WebSocketApp, WebSocket, WebSocketTimeoutException, WebSocketPayloadException, WebSocketException
 logging.basicConfig()
 log = logging.getLogger(__name__)

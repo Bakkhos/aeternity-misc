@@ -1,38 +1,28 @@
-import unittest
-from aeternity.signing import Account
-import aeternity.transactions, aeternity.oracles, aeternity.hashing, aeternity.config, aeternity.contract, \
-    aeternity.epoch, aeternity.utils
-import aeternity as ae
-from aeternity.epoch import EpochClient
-from aeternity.transactions import TxBuilder, TxSigner
-from aeternity.oracles import Oracle
-from aeternity.config import Config
-from aeternity.contract import Contract, ContractError
-from aeternity.aens import AEName
-from pprint import pprint as pp, pformat as pf
-from aeternity.openapi import OpenAPIClientDetailedException
-import logging
-import requests
-from requests import Request, Response
-from pprint import pprint
-import IPython, json, threading
-import urllib.parse
-from aeternity.config import *
+import aeternity.transactions, aeternity.oracles, aeternity.hashing, aeternity.config, aeternity.contract
+import aeternity as ae, logging
+import json, time, urllib.parse
 from threading import Thread
 from typing import Tuple
 from queue import Queue, LifoQueue
-from enum import Enum
-import time
-import conf
-from conf import *
+
+from aeternity.contract import Contract
+from aeternity.epoch import EpochClient
+from aeternity.signing import Account
+from aeternity.transactions import TxSigner
 from websocket import WebSocketApp, WebSocket, WebSocketTimeoutException, WebSocketPayloadException, WebSocketException
+from enum import Enum
+
+from common import CONF_PRIV, P3, P4
+CONF = CONF_PRIV
+ACC_INITIATOR = P3
+ACC_RESPONDER = P4
+epoch = EpochClient(debug=True,
+                    native=False,
+                    configs=[CONF])
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
-
-acc_initiator = conf.P3
-acc_responder = conf.P4
 
 class Role(Enum):
     INITIATOR = "initiator"
@@ -156,8 +146,8 @@ class WsMsgFactory:
         return signer.cosign_encode_transaction(tx, partner_account)
 
 
-def get_ws_thread(ini: Account = acc_initiator,
-                  res: Account = acc_responder,
+def get_ws_thread(ini: Account = ACC_INITIATOR,
+                  res: Account = ACC_RESPONDER,
                   role: Role = Role.RESPONDER,
                   existing_channel_id: str = None,
                   last_state_tx: str = None,
@@ -257,15 +247,15 @@ def get_ws_thread(ini: Account = acc_initiator,
 EXISTING_CHANNEL = "ch_25sqma1dMKbDnKrv14r9Hokvz9RncQb4DQmA6aNVT8whXsgV5z"
 LAST_STATE =  'tx_+QEhCwH4hLhAIm1kX8yP/VE0wEK2gBosm0BTEpbCikESiTjU6PVASHf9v0gCr7rlCVzk0wkWyCQu5mPwVQuWlIebl12VJxGdCrhAKNY3rU3F+LgqKPkBSxLLkFv2MbV8gB5WWXyaiUz1A9wCDWgYBNYPe0xH+H6vjMOTtM9dqckZ+HRIGU7pmxkfALiX+JU5AaEGjsTY8PZlPqQbwJkFeVuYqVnJpyuvFwfO/e/2rBpV/JcF+E24S/hJggI6AaEBhQ28rSi+fAwdzrAiB4k1FxYD2gF7EOg5DLwZ+fTnFJ2hAexHBYw0cRKr7MkjpAYyigrfnm3zk9lEoMqpTCU0cMG/AKBraNSrjWf4aT6yv9vp/1PlTsvOxVK6rqumH3Yk6WCPuWHD11o='
 
-qr, sr, Tr, Fr = get_ws_thread(ini=acc_initiator,
-                               res=acc_responder,
+qr, sr, Tr, Fr = get_ws_thread(ini=ACC_INITIATOR,
+                               res=ACC_RESPONDER,
                                role=Role.RESPONDER,
                                existing_channel_id=EXISTING_CHANNEL,
                                last_state_tx=LAST_STATE,
                                network_id=epoch._get_active_config().network_id)
 
-qi, si, Ti, Fi = get_ws_thread(ini=acc_initiator,
-                               res=acc_responder,
+qi, si, Ti, Fi = get_ws_thread(ini=ACC_INITIATOR,
+                               res=ACC_RESPONDER,
                                role=Role.INITIATOR,
                                existing_channel_id=EXISTING_CHANNEL,
                                last_state_tx=LAST_STATE,
@@ -308,7 +298,7 @@ if not EXISTING_CHANNEL:
     si.sendj(Fi.contract_create(C.bytecode, C.encode_calldata("init", "(42)"), 0))
     both_acknowledge()
 
-    ca = aeternity.hashing.contract_id(acc_initiator.get_address(), 2)
+    ca = aeternity.hashing.contract_id(ACC_INITIATOR.get_address(), 2)
     ca_ak = "ak_" + ca[3:]
 
     #put money into contract
@@ -332,17 +322,17 @@ if not EXISTING_CHANNEL:
     #both_acknowledge(False)
 
 # get balances and state
-si.sendj(Fi.info_balances(acc_initiator.get_address(), acc_responder.get_address(), "ak_" + ca[3:]))
+si.sendj(Fi.info_balances(ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address(), "ak_" + ca[3:]))
 
 #trivial update
-si.sendj(Fi.transfer(acc_initiator.get_address(), acc_responder.get_address(), 0))
+si.sendj(Fi.transfer(ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address(), 0))
 both_acknowledge()
 
 m = qi.get_nowait()
 state_round = m['payload']['state']
 
 # get poi
-si.sendj(Fi.getPoi([acc_initiator.get_address(), acc_responder.get_address()],
+si.sendj(Fi.getPoi([ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address()],
                    [ca]))
 time.sleep(1)
 m = qi.get_nowait()
@@ -357,30 +347,30 @@ state_round_last = m["payload"]["state"]
 print(state_round_last == state_round)
 
 
-sctx = epoch.tx_builder.tx_channel_close_solo(acc_initiator.get_address(),
+sctx = epoch.tx_builder.tx_channel_close_solo(ACC_INITIATOR.get_address(),
                                               state_round,
                                               poi,
                                               ch_id,
                                               ttl=0,
                                               fee=100000,
-                                              nonce=epoch.get_next_nonce(acc_initiator.get_address()))
+                                              nonce=epoch.get_next_nonce(ACC_INITIATOR.get_address()))
 
-signer = TxSigner(acc_initiator, epoch._get_active_config().network_id)
+signer = TxSigner(ACC_INITIATOR, CONF.network_id)
 txs, _, txh = signer.sign_encode_transaction(sctx)
 epoch.broadcast_transaction(txs, txh)
 
 time.sleep(5*60)
 
 #settle tx
-sctx = epoch.tx_builder.tx_channel_settle(acc_initiator.get_address(),
+sctx = epoch.tx_builder.tx_channel_settle(ACC_INITIATOR.get_address(),
                                           state_round,
                                           poi,
                                           ch_id,
                                           ttl=0,
                                           fee=100000,
-                                          nonce=epoch.get_next_nonce(acc_initiator.get_address())).tx
+                                          nonce=epoch.get_next_nonce(ACC_INITIATOR.get_address())).tx
 
-signer = TxSigner(acc_initiator, epoch._get_active_config().network_id)
+signer = TxSigner(ACC_INITIATOR, CONF.network_id)
 txs, _, txh = signer.sign_encode_transaction(sctx)
 epoch.broadcast_transaction(txs, txh)
 

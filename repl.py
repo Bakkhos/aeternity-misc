@@ -16,12 +16,13 @@ from requests import Request, Response
 from pprint import pprint
 import IPython
 from aeternity.config import *
-#import pyperclip
-from conf import *
-
 logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
+
+from common import *
+epoch = EpochClient(debug=True,
+                    configs=[CONF_DEFAULT])
 
 def compile(fname : str, **kwargs):
     fname = f"./contracts/{fname}.aes"
@@ -41,9 +42,4 @@ if __name__ == '__main__':
     #print(ACC2.get_address())
     #print(ACC2.get_private_key())
     #print(MAIN.get_private_key())
-
-    epoch.set_native(True)
-
-
-
     pass

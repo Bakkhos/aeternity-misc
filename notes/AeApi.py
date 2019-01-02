@@ -1,7 +1,3 @@
-from aeternity.config import Config
-from aeternity.epoch import EpochClient
-from pprint import pprint as pp
-import attr
 from collections import namedtuple
 
 Api = namedtuple("Api", ["name", "doc", "params", "responses", "endpoint", "http_method"])

@@ -1,8 +1,9 @@
 from aeternity.aens import AEName
-from aeternity.config import Config
 from aeternity.epoch import EpochClient
-from aeternity.signing import Account
-from conf import *
+from common import CONF_EDGE, E1
+epoch = EpochClient(native=False,
+                    configs=[CONF_EDGE],
+                    debug=True)
 
 def claim(client, account, name : str):
     name = AEName(name, client)
@@ -12,4 +13,4 @@ def claim(client, account, name : str):
         name.update(account, target=account.address)
 
 if __name__ == '__main__':
-    claim(epoch, ACC, "schallundrauch.test")
+    claim(epoch, E1, "schallundrauch.test")
