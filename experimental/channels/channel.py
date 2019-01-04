@@ -43,6 +43,8 @@ class OnchainChannelState(Enum):
     LOCKED = 2
     CLOSING = 3
 
+CONF = CONF_DEFAULT
+
 class EpochWebsocketChannel:
     def __init__(self,
                  me : Account,

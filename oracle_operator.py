@@ -9,10 +9,12 @@ from aeternity.oracles import Oracle, OracleQuery
 from aeternity.signing import Account
 import aeternity, aeternity.oracles as oracles
 
-from common import E2, CONF_EDGE
+from common import E2, CONF_EDGE, P3, CONF_PRIV
+CONF = CONF_PRIV
+ACC = P3
 epoch = EpochClient(native=False,
                     debug=True,
-                    configs=[CONF_EDGE])
+                    configs=[CONF])
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -96,7 +98,7 @@ class OraclefJean(Oracle):
                          **kwargs)
 def create():
     ora = OraclefJean(epoch)
-    ora.register(E2)
+    ora.register(ACC)
     print(f'Oracle {ora.id} ready')
     return ora
 
@@ -109,7 +111,7 @@ def service(ora):
                 qstr = oracles.hashing.decode(q['query'])
                 queries = ora.get_response(qstr)
                 ora.client.blocking_mode = True
-                ora.respond(account=E2,
+                ora.respond(account=ACC,
                             query_id=q['id'],
                             response=json.dumps(queries))
                 ora.client.blocking_mode = False

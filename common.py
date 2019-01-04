@@ -1,7 +1,7 @@
 from aeternity.signing import Account
 from aeternity.epoch import EpochClient
 from aeternity.config import Config
-import logging
+import logging, IPython
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
