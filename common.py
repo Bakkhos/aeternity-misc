@@ -21,7 +21,7 @@ P4=Account.from_keystore(HOME+"p4","")
 
 CONF_MAIN = Config(external_url="http://localhost:3013",
                    internal_url="http://localhost:3113",
-                   channels_url="localhost:3014/channel",
+                   channels_url="ws://localhost:3014/channel",
                    network_id='ae_mainnet')
 
 CONF_EDGE = Config(external_url="https://sdk-edgenet.aepps.com",
@@ -30,14 +30,13 @@ CONF_EDGE = Config(external_url="https://sdk-edgenet.aepps.com",
 
 CONF_UAT = Config(external_url="http://localhost:3013",
                    internal_url="http://localhost:3113",
-                   channels_url="localhost:3014/channel",
+                   channels_url="ws://localhost:3014/channel",
                    network_id='ae_uat')
 
 CONF_PRIV = Config(external_url="http://localhost:3013",
                    internal_url="http://localhost:3113",
-                   channels_url="localhost:3014/channel",
+                   channels_url="ws://localhost:3014/channel",
                    network_id='tirnanog')
 
 CONF_DEFAULT = CONF_PRIV
 Config.set_defaults(CONF_DEFAULT)
-

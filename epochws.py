@@ -1,4 +1,4 @@
-import sys
+import sys, IPython
 import aeternity.transactions, aeternity.oracles, aeternity.hashing, aeternity.config, aeternity.contract
 import aeternity as ae, logging
 import json, time, urllib.parse, IPython
@@ -12,13 +12,17 @@ from aeternity.signing import Account
 from aeternity.transactions import TxSigner
 from websocket import WebSocketApp, WebSocket, WebSocketTimeoutException, WebSocketPayloadException, WebSocketException
 from enum import Enum
+from typing import Union
+from deserialize import parse_rlp
+import attr
+from attr import attrs, attrib  # attrs
 
 from common import CONF_PRIV, P3, P4
 
 CONF = CONF_PRIV
 ACC_INITIATOR = P3
 ACC_RESPONDER = P4
-epoch = EpochClient(debug=True,
+EPOCH = EpochClient(debug=True,
                     native=True,
                     configs=[CONF])
 
@@ -26,20 +30,23 @@ logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
-
 class Role(Enum):
     INITIATOR = "initiator"
     RESPONDER = "responder"
 
+class WsMsgFactory(object):
+    '''
+    Colletion of factory functions for legacy epoch ws api messages
+    as described at https://github.com/aeternity/protocol/blob/master/epoch/api/channel_ws_api.md
+    cf. https://github.com/aeternity/protocol/blob/master/epoch/api/channels_api_usage.md
+    '''
 
-class WsMsgFactory:
     def __init__(self,
                  me: Account,
                  partner_address: str,
+                 network_id: str,
                  role: Role = Role.INITIATOR,
-                 channel_id: str = None,
-                 network_id: str = CONF.network_id
-                 ):
+                 channel_id: str = None):
         self.me = me
         self.partner = partner_address
         self.txsigner = TxSigner(me, network_id)
@@ -123,135 +130,156 @@ class WsMsgFactory:
                 'tag': 'poi',
                 'payload': {'accounts': accounts, 'contracts': contracts}}
 
-    def tx_mutual_close(self, channel_id,
-                        amt_i,
-                        amt_r,
-                        partner_account: Account,
-                        nonce=None,
-                        fee=40000,
-                        client: EpochClient = epoch,
-                        network_id=None,
-                        ttl=0):
 
-        tx = client.tx_builder.tx_channel_close_mutual(self.me.get_address(),
-                                                       channel_id,
-                                                       amt_i,
-                                                       amt_r,
-                                                       ttl,
-                                                       fee,
-                                                       nonce=nonce or client.get_next_nonce(self.me.get_address()))
-        signer = TxSigner(self.me,
-                          network_id=network_id or client._get_active_config().network_id)
-
-        return signer.cosign_encode_transaction(tx, partner_account)
-
-
-def get_ws_thread(ini: Account = ACC_INITIATOR,
-                  res: Account = ACC_RESPONDER,
-                  role: Role = Role.RESPONDER,
-                  existing_channel_id: str = None,
-                  last_state_tx: str = None,
-                  network_id: str = CONF.network_id,
-                  lifoQueue: bool = True,
-                  **kwargs) -> Tuple[Queue, Callable[[dict], None], Thread, WsMsgFactory]:
+@attrs(auto_attribs=True, init=False)
+class EpochWSChannelConnection(object):
     '''
-    Create a websocket client to interact with the epoch ws api
-    :return: (q, s, t, f) where
-        q: stack of incoming messages
-        s: function to submit a json message on the websocket
-        t: websocket handler thread
-        f: message factory for this connection
+    Websocket client to interact with the epoch ws api
     '''
+    q: LifoQueue  # stack of incoming messages
+    s: Callable[[dict], None]  # callable to submit a json message on the websocket
+    f: WsMsgFactory  # message factory for this connection
 
-    # calculate URL for websocket connect
-    options = {
-        'initiator_id': ini.get_address(),
-        'responder_id': res.get_address(),
-        'lock_period': 1,
-        'push_amount': 0,
-        'initiator_amount': 10 ** 9,
-        'responder_amount': 10 ** 9,
-        'channel_reserve': 10 ** 6,
-        'ttl': 0,
-        'nonce': 8,
-        'port': 1234,
-        'role': role.value,
-        'timeout_accept': 3600000,
-        'timeout_funding_create': 3600000,
-        'timeout_funding_sign': 3600000,
-        'timeout_funding_lock': 3600000,
-        'timeout_idle': 3600000,
-        'timeout_open': 3600000,
-        'timeout_sign': 3600000,
-        'minimum_depth': 2
-    }
-    options.update(kwargs)
+    def __init__(self,
+                 role: Role,
+                 acc: Account,
+                 partner_addr: str,
+                 existing_channel_id: str = None,
+                 last_state_tx: str = None,
+                 network_id: str = CONF.network_id,
+                 epoch: EpochClient = EPOCH,
+                 port: int = 1234,
+                 responder_host: str = "localhost",
+                 initial_amount: int = 10 ** 9,
+                 partner_initial_amount: int = 10 ** 9,
+                 lock_period: int = 1,
+                 push_amount: int = 0,
+                 channel_reserve: int = 0,
+                 ping_interval: int = 15,
+                 creation_tx_ttl: int = 0,
+                 creation_tx_nonce: int = None,
+                 timeout_accept: int = 3_600_000,
+                 timeout_funding_create: int = 3_600_000,
+                 timeout_funding_sign: int = 3_600_000,
+                 timeout_funding_lock: int = 3_600_000,
+                 timeout_idle: int = 3_600_000,
+                 timeout_open: int = 3_600_000,
+                 timeout_sign: int = 3_600_000,
+                 minimum_depth: int = 4):
 
-    if role == Role.INITIATOR:
-        options["host"] = "localhost"
+        if not isinstance(acc, Account):
+            raise ValueError(f"Account must be an Account, not an address. Got: {acc}")
+        if not (role == Role.RESPONDER or role == role.INITIATOR):
+            raise ValueError(f"Role must be {Role.INITIATOR} or {Role.RESPONDER}.")
 
-    if existing_channel_id is not None and last_state_tx is not None:
-        options['existing_channel_id'] = existing_channel_id
-        options['offchain_tx'] = last_state_tx
+        # create queue for incoming messages
+        q = LifoQueue(maxsize=2000)
+        self.q = q
 
-    options_str = urllib.parse.urlencode(options)
+        # calculate URL for websocket connect
+        ini_addr = acc.get_address() if role == role.INITIATOR else partner_addr  # type:str
+        res_addr = acc.get_address() if role == role.RESPONDER else partner_addr  # type:str
+        ini_amt = initial_amount if role == role.INITIATOR else partner_initial_amount
+        res_amt = initial_amount if role == role.RESPONDER else partner_initial_amount
+        del partner_addr, initial_amount, partner_initial_amount
 
-    # create queue for incoming messages
-    q = LifoQueue(maxsize=2000) if lifoQueue else Queue(maxsize=2000)
+        options = {
+            'initiator_id': ini_addr,
+            'responder_id': res_addr,
+            'lock_period': lock_period,
+            'push_amount': push_amount,
+            'initiator_amount': ini_amt,
+            'responder_amount': res_amt,
+            'channel_reserve': channel_reserve,
+            'ttl': creation_tx_ttl,
+            'nonce': creation_tx_nonce or epoch.get_next_nonce(ini_addr),
+            'port': port,
+            'role': role.value,
+            'timeout_accept': timeout_accept,
+            'timeout_funding_create': timeout_funding_create,
+            'timeout_funding_sign': timeout_funding_sign,
+            'timeout_funding_lock': timeout_funding_lock,
+            'timeout_idle': timeout_idle,
+            'timeout_open': timeout_open,
+            'timeout_sign': timeout_sign,
+            'minimum_depth': minimum_depth
+        }
 
-    # create WebSocketApp thread to handle communication with the websocket
-    def on_message(ws, message):
-        message = json.loads(message)
-        log.info(f"[{role.value}] " + message.__str__())
-        try:
-            action = message['action']
-            if action == 'info':
-                pass
-            else:
-                q.put(message)
-        except Exception:
-            log.warning(f"[{role.value}] Message without action tag: {message.__str__()}")
+        if role == Role.INITIATOR:
+            options["host"] = responder_host
 
-    def on_error(ws, message):
-        log.warning(message)
+        if existing_channel_id is not None and last_state_tx is not None:
+            options['existing_channel_id'] = existing_channel_id
+            options['offchain_tx'] = last_state_tx
 
-    def on_close(ws):
-        log.info(f"[{role.value}] ws closed")
+        options_str = urllib.parse.urlencode(options)
 
-    def on_open(ws: WebSocket):
-        log.info(f"[{role.value}] ws open")
+        # create WebSocketApp thread to receive messages from the websocket
+        def on_message(ws, message):
+            message = json.loads(message)
+            log.info(f"[{role.value}] " + message.__str__())
+            try:
+                action = message['action']
+                if action == 'info':
+                    pass
+                else:
+                    q.put(message)
+            except Exception:
+                log.warning(f"[{role.value}] Message without action tag: {message.__str__()}")
 
-    def on_ping(ws, message):
-        log.info(f"[{role.value}] ping received:" + str(message))
+        def on_error(ws, message):
+            log.warning(message)
 
-    def on_pong(ws, message):
-        log.log(logging.NOTSET, f"[{role.value}] pong received:" + str(message))
+        def on_close(ws):
+            log.info(f"[{role.value}] ws closed")
 
-    ws = WebSocketApp("ws://localhost:3014/channel" + "?" + options_str,
-                      on_open=on_open,
-                      on_message=on_message,
-                      on_error=on_error,
-                      on_close=on_close,
-                      on_ping=on_ping,
-                      on_pong=on_pong)
+        def on_open(ws: WebSocket):
+            log.info(f"[{role.value}] ws open")
 
-    T = Thread(target=ws.run_forever, kwargs={'ping_interval': 15}) #pings keep connection open
-    log.debug("About to start " + role.value)
-    T.start()
+        def on_ping(ws, message):
+            log.info(f"[{role.value}] ping received:" + str(message))
 
-    # Create function to submit messages
-    def sendj(msg):
-        log.debug(f"[{role.value} sent] " + msg.__str__())
-        ws.sock.send(json.dumps(msg))
+        def on_pong(ws, message):
+            log.log(logging.NOTSET, f"[{role.value}] pong received:" + str(message))
 
-    # Create message factory
-    F = WsMsgFactory(me=ini if role == Role.INITIATOR else res,
-                     partner_address=res.get_address() if role == Role.INITIATOR else ini.get_address(),
-                     role=role,
-                     channel_id=existing_channel_id,
-                     network_id=network_id)
 
-    return (q, sendj, T, F)
+        url = epoch._get_active_config().channels_url + "?" + options_str
+        log.debug(f"About to connect to: {url}")
+        ws = WebSocketApp(url,
+                          on_open=on_open,
+                          on_message=on_message,
+                          on_error=on_error,
+                          on_close=on_close,
+                          on_ping=on_ping,
+                          on_pong=on_pong)
+
+        self._thread = Thread(target=ws.run_forever,
+                              kwargs={'ping_interval': ping_interval})  # pings keep connection open
+        log.debug("About to start " + role.value)
+        self._thread.start()
+
+        # Create function to submit messages
+        def sendj(msg):
+            log.debug(f"[{role.value} sent] " + msg.__str__())
+            ws.sock.send(json.dumps(msg))
+
+        self.s = sendj
+
+        # Create message factory
+        self.f = WsMsgFactory(me=acc,
+                              partner_address=res_addr if role == Role.INITIATOR else ini_addr,
+                              role=role,
+                              channel_id=existing_channel_id,
+                              network_id=network_id)
+
+    def as_tuple(self) -> Tuple[LifoQueue, Callable[[dict], None], WsMsgFactory]:
+        '''
+        :return: (q, s, f) where
+-        q: stack of incoming messages
+-        s: function to submit a json message on the websocket
+-        f: message factory for this connection
+        '''
+        return (self.q, self.s, self.f)
 
 if __name__ == "__main__":
     '''
@@ -260,26 +288,36 @@ if __name__ == "__main__":
     EXISTING_CHANNEL = None
     LAST_STATE = None
 
-    qr, sr, Tr, Fr = get_ws_thread(ini=ACC_INITIATOR,
-                                   res=ACC_RESPONDER,
-                                   role=Role.RESPONDER,
-                                   existing_channel_id=EXISTING_CHANNEL,
-                                   last_state_tx=LAST_STATE,
-                                   network_id=epoch._get_active_config().network_id)
+    R = EpochWSChannelConnection(role=Role.RESPONDER,
+                                 acc=ACC_RESPONDER,
+                                 partner_addr=ACC_INITIATOR.get_address(),
+                                 existing_channel_id=EXISTING_CHANNEL,
+                                 last_state_tx=LAST_STATE,
+                                 network_id=EPOCH._get_active_config().network_id,
+                                 epoch=EPOCH,
+                                 initial_amount=10 ** 6,
+                                 partner_initial_amount=10 ** 6)
+    qr, sr, Fr = R.q, R.s, R.f
 
-    qi, si, Ti, Fi = get_ws_thread(ini=ACC_INITIATOR,
-                                   res=ACC_RESPONDER,
-                                   role=Role.INITIATOR,
-                                   existing_channel_id=EXISTING_CHANNEL,
-                                   last_state_tx=LAST_STATE,
-                                   network_id=epoch._get_active_config().network_id)  # todo check: on action:leave, do both get get the same state?
+    I = EpochWSChannelConnection(role=Role.INITIATOR,
+                                 acc=ACC_INITIATOR,
+                                 partner_addr=ACC_RESPONDER.get_address(),
+                                 existing_channel_id=EXISTING_CHANNEL,
+                                 last_state_tx=LAST_STATE,
+                                 network_id=EPOCH._get_active_config().network_id,
+                                 epoch=EPOCH,
+                                 initial_amount=10 ** 6,
+                                 partner_initial_amount=10 ** 6
+                                 )
+    qi, si, Fi = I.q, I.s, I.f
 
 
     def both_acknowledge(initiator_is_starter=True):
-        ((ss, Fs, qs), (sa, Fa, qa)) = ((si, Fi, qi), (sr, Fr, qr)) if initiator_is_starter else (
-            (sr, Fr, qr), (si, Fi, qi))
+        (S, A) = (I, R) if initiator_is_starter else (R, I)
+        (ss, qs, Fs) = (S.s, S.q, S.f)
+        (sa, qa, Fa) = (A.s, A.q, A.f)
 
-        time.sleep(1)  #should use blocking/synchronous jsonrpc instead of this
+        time.sleep(1)  # should use blocking/synchronous jsonrpc instead of this
         ss(Fs.sign_update(qs.get_nowait(), role="starter"))
         time.sleep(1)
         sa(Fa.sign_update(qa.get_nowait(), role="acknowledger"))
@@ -290,7 +328,7 @@ if __name__ == "__main__":
         ch_open_tx = signing_request["payload"]["tx"]
         si(Fi.channel_open(ch_open_tx))
         sr(Fr.channel_open(ch_open_tx))
-        time.sleep(60)
+        time.sleep(30)
     else:
         time.sleep(1)
 
@@ -298,225 +336,96 @@ if __name__ == "__main__":
     ch_id = m['channel_id']
 
     # transfers
-    si(Fi.transfer(ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address(), 10**7))
+    # si(Fi.transfer(ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address(), 10 ** 7))
+    # both_acknowledge()
+
+    # si(Fi.transfer(ACC_RESPONDER.get_address(), ACC_INITIATOR.get_address(), 2 * 10 ** 7))
+    # both_acknowledge()
+
+    # create contract
+    C = Contract(open("contracts/AddConstant.aes", "r").read(), EPOCH)
+    # C = Contract(open("contracts/FaucetMin.aes", "r").read(), EPOCH)
+
+    si(Fi.contract_create(C.bytecode, C.encode_calldata("init", "(1000000)"), 0))
     both_acknowledge()
 
-    si(Fi.transfer(ACC_RESPONDER.get_address(), ACC_INITIATOR.get_address(), 2* 10**7))
+    state_parsed = parse_rlp(qi.get_nowait()["payload"]["state"])
+    round = state_parsed.transaction.round
+
+    ca = aeternity.hashing.contract_id(ACC_INITIATOR.get_address(), round)
+    ca_ak = "ak_" + ca[3:]
+
+    # put money into contract
+    si(Fi.contract_call(ca, C.encode_calldata("add", "(0)"), 10 ** 6))
+    both_acknowledge()
+    sr(Fr.contract_call(ca, C.encode_calldata("add", "(0)"), 10 ** 6))
+    both_acknowledge(initiator_is_starter=False)
+
+
+    # withdraw
+    # si(Fr.contract_call(ca, C.encode_calldata("take", "()")))
+    # both_acknowledge()
+
+    # get balances
+    def get_balances(*addresses):
+        si(Fi.info_balances(*addresses))
+        time.sleep(1)
+        m = qi.get_nowait()
+        balances = dict()
+        for x in m["payload"]:
+            balances[x["account"]] = x["balance"]
+        return balances
+
+
+    balances = get_balances(ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address(), ca_ak)
+
+    # get poi
+    si(Fi.getPoi([ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address()],
+                 [ca]))
+
+    time.sleep(1)
+    m = qi.get_nowait()
+    old_poi = m["payload"]["poi"]
+
+    # update
+    si(Fi.transfer(ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address(),
+                   0))  # it does not work if i set 1... but it also does not work if I get the POI after this transaction
     both_acknowledge()
 
-    def nocontract():
-        #get poi
-        si(Fi.getPoi([ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address()],[]))
-        time.sleep(1)
-        m = qi.get_nowait()
-        poi = m["payload"]["poi"]
+    # get latest state - note that the root hash is the hash of the old poi, before the transfer
+    m = qi.get_nowait()
+    state = m['payload']['state']
+    stateh = parse_rlp(state)
 
-        #get state
-        state = qi.get_nowait()["payload"]["state"]
-
-        # solo close
-        sctx = epoch.tx_builder.tx_channel_close_solo(ACC_INITIATOR.get_address(),
-                                                      state,
-                                                      poi,
-                                                      ch_id,
-                                                      ttl=0,
-                                                      fee=5 * 10 ** 6,
-                                                      nonce=epoch.get_next_nonce(ACC_INITIATOR.get_address()))
-
-        #settle
-        sctx = epoch.tx_builder.tx_channel_settle(ACC_INITIATOR.get_address(),
-                                                  state_round,
-                                                  poi,
+    # solo close
+    sctx = EPOCH.tx_builder.tx_channel_close_solo(ACC_INITIATOR.get_address(),
+                                                  state,
+                                                  old_poi,
                                                   ch_id,
                                                   ttl=0,
-                                                  fee=5 * 10 ** 6,
-                                                  nonce=epoch.get_next_nonce(ACC_INITIATOR.get_address())).tx
-
-        signer = TxSigner(ACC_INITIATOR, CONF.network_id)
-        txs, _, txh = signer.sign_encode_transaction(sctx)
-        epoch.broadcast_transaction(txs, txh)
-        pass
-        sys.exit(0)
-
-    nocontract()
-
-    def contract():
-        # create contract
-        C = Contract(open("contracts/FaucetMin.aes", "r").read(), epoch)
-
-        si(Fi.contract_create(C.bytecode, C.encode_calldata("init", "(1000000)"), 0))
-        both_acknowledge()
-
-        ca = aeternity.hashing.contract_id(ACC_INITIATOR.get_address(), 2)
-        ca_ak = "ak_" + ca[3:]
-
-        # put money into contract
-        si(Fi.contract_call(ca, C.encode_calldata("give", "()"), 10 ** 6))
-        both_acknowledge()
-        si(Fr.contract_call(ca, C.encode_calldata("give", "()"), 10 ** 6))
-        both_acknowledge()
-
-        # call, get money out
-        si(Fr.contract_call(ca, C.encode_calldata("take", "()")))
-        both_acknowledge()
-
-        # get balances and state
-        si(Fi.info_balances(ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address(), "ak_" + ca[3:]))
-
-        # trivial update
-        si(Fi.transfer(ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address(), 0))
-        both_acknowledge()
-
-        m = qi.get_nowait()
-        state_round = m['payload']['state']
-
-        # get poi
-        si(Fi.getPoi([ACC_INITIATOR.get_address(), ACC_RESPONDER.get_address()],
-                     [ca]))
-        time.sleep(1)
-        m = qi.get_nowait()
-        poi = m["payload"]["poi"]
-
-        # solo close
-        sctx = epoch.tx_builder.tx_channel_close_solo(ACC_INITIATOR.get_address(),
-                                                      state_round,
-                                                      poi,
-                                                      ch_id,
-                                                      ttl=0,
-                                                      fee=5 * 10 ** 6,
-                                                      nonce=epoch.get_next_nonce(ACC_INITIATOR.get_address()))
-
-        signer = TxSigner(ACC_INITIATOR, CONF.network_id)
-        txs, _, txh = signer.sign_encode_transaction(sctx)
-        epoch.broadcast_transaction(txs, txh)
-
-        time.sleep(30)
-
-        # settle tx
-        sctx = epoch.tx_builder.tx_channel_settle(ACC_INITIATOR.get_address(),
-                                                  state_round,
-                                                  poi,
-                                                  ch_id,
-                                                  ttl=0,
-                                                  fee=5 * 10 ** 6,
-                                                  nonce=epoch.get_next_nonce(ACC_INITIATOR.get_address())).tx
-
-        signer = TxSigner(ACC_INITIATOR, CONF.network_id)
-        txs, _, txh = signer.sign_encode_transaction(sctx)
-        epoch.broadcast_transaction(txs, txh)
-        pass
-        sys.exit(0)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-if not __name__ == '__main__':
-    class WsHandler():
-        def __init__(self,
-                     ini: Account,
-                     res: Account,
-                     network_id: str,
-                     role: Role = Role.RESPONDER,
-                     existing_channel_id: str = None,
-                     last_state_tx: str = None,
-                     lifoQueue: bool = True,
-                     **kwargs):
-            q, s, T, F = get_ws_thread(ini=ini,
-                                       res=res,
-                                       role=role,
-                                       existing_channel_id=existing_channel_id,
-                                       last_state_tx=last_state_tx,
-                                       network_id=network_id,
-                                       lifoQueue=lifoQueue,
-                                       **kwargs)
-            self.q = q
-            self.send = s
-            self._T = T
-            self.F = F
-
-        def acknowledge(self, update = None, role="starter"):
-            if not (role == "starter" or role == "acknowledger"):
-                raise ValueError(f"Role {role} must be starter or acknowledger")
-            if update is None:
-                update = self.q.get_nowait()
-            self.send(self.F.sign_update(update, role=role))
+                                                  fee=10 ** 6,  # todo: fee calculation function
+                                                  nonce=EPOCH.get_next_nonce(ACC_INITIATOR.get_address()))
+
+    signer = TxSigner(ACC_INITIATOR, CONF.network_id)
+    txs, _, txh = signer.sign_encode_transaction(sctx)
+    EPOCH.broadcast_transaction(txs, txh)
+
+    time.sleep(30)
+
+    # settle tx
+    sctx = EPOCH.tx_builder.tx_channel_settle(ch_id,
+                                              ACC_INITIATOR.get_address(),
+                                              balances[ACC_INITIATOR.get_address()],
+                                              balances[ACC_RESPONDER.get_address()],  # balance of contract is LOST!
+                                              ttl=0,
+                                              fee=10 ** 5,
+                                              nonce=EPOCH.get_next_nonce(ACC_INITIATOR.get_address()))
+
+    signer = TxSigner(ACC_INITIATOR, CONF.network_id)
+    txs, _, txh = signer.sign_encode_transaction(sctx)
+    EPOCH.broadcast_transaction(txs, txh)
+
+    # initiator received initiator_amount_final - settleTx fee
+    # responder received responder_amount_final
+    pass
+    sys.exit(0)
